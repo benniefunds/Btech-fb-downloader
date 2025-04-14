@@ -791,4 +791,200 @@
       
       // Validate URL
       if (!url.includes('facebook.com') && !url.includes('fb.watch')) {
-        showTe
+        showTerminalNotification('error', 'Invalid URL - Must be from Facebook (facebook.com or fb.watch)');
+        return;
+      }
+      
+      // Save URL to localStorage
+      localStorage.setItem('lastFbUrl', url);
+      addToHistory(url);
+      
+      const videoContainer = document.getElementById('videoContainer');
+      const loading = document.getElementById('loading');
+      const progressContainer = document.getElementById('progressContainer');
+      const progressBar = document.getElementById('progressBar');
+      const downloadBtn = document.getElementById('downloadBtn');
+      
+      // Show loading state
+      videoContainer.style.display = 'none';
+      loading.style.display = 'flex';
+      progressContainer.style.display = 'block';
+      downloadBtn.disabled = true;
+      downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+      
+      // Simulate progress (real API would update this differently)
+      let progress = 0;
+      const progressInterval = setInterval(() => {
+        progress += Math.random() * 10;
+        if (progress > 90) clearInterval(progressInterval);
+        progressBar.style.width = `${Math.min(progress, 90)}%`;
+      }, 300);
+      
+      try {
+        const apiURL = `https://tcs-demonic2.vercel.app/api/fbdownloader?url=${encodeURIComponent(url)}`;
+        const response = await fetch(apiURL);
+        
+        // Complete progress bar
+        progressBar.style.width = '100%';
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const data = await response.json();
+        
+        if (data.success && data.data.success) {
+          const { hdlink, sdlink } = data.data;
+          let html = '';
+          
+          if (hdlink) {
+            html += `
+              <div class="video-wrapper">
+                <h3><i class="fas fa-film"></i> HD Quality (720p/1080p)</h3>
+                <video controls>
+                  <source src="${hdlink}" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+                <div class="quality-btns">
+                  <a href="${hdlink}" class="quality-btn" download="facebook_hd_video.mp4">
+                    <i class="fas fa-download"></i> Download HD
+                  </a>
+                  <button class="quality-btn" onclick="copyToClipboard('${hdlink}')">
+                    <i class="fas fa-copy"></i> Copy Link
+                  </button>
+                </div>
+              </div>
+            `;
+          }
+          
+          if (sdlink) {
+            html += `
+              <div class="video-wrapper">
+                <h3><i class="fas fa-film"></i> SD Quality (480p)</h3>
+                <video controls>
+                  <source src="${sdlink}" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+                <div class="quality-btns">
+                  <a href="${sdlink}" class="quality-btn" download="facebook_sd_video.mp4">
+                    <i class="fas fa-download"></i> Download SD
+                  </a>
+                  <button class="quality-btn" onclick="copyToClipboard('${sdlink}')">
+                    <i class="fas fa-copy"></i> Copy Link
+                  </button>
+                </div>
+              </div>
+            `;
+          }
+          
+          videoContainer.innerHTML = html;
+          videoContainer.style.display = 'block';
+          showTerminalNotification('success', 'Video loaded successfully!');
+        } else {
+          throw new Error(data.message || "Failed to fetch video links.");
+        }
+      } catch (error) {
+        console.error(error);
+        showTerminalNotification('error', error.message || "An error occurred. Please try again.");
+      } finally {
+        clearInterval(progressInterval);
+        loading.style.display = 'none';
+        progressContainer.style.display = 'none';
+        progressBar.style.width = '0%';
+        downloadBtn.disabled = false;
+        downloadBtn.innerHTML = '<i class="fas fa-download"></i> Download Video';
+      }
+    }
+
+    // ===== HISTORY FUNCTIONS =====
+    function addToHistory(url) {
+      // Remove if already exists
+      history = history.filter(item => item.url !== url);
+      
+      // Add to beginning of array
+      history.unshift({
+        url: url,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Keep only last 5 items
+      if (history.length > MAX_HISTORY_ITEMS) {
+        history = history.slice(0, MAX_HISTORY_ITEMS);
+      }
+      
+      // Save to localStorage
+      localStorage.setItem('downloadHistory', JSON.stringify(history));
+      
+      // Update UI
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const historyList = document.getElementById('historyList');
+      
+      if (history.length === 0) {
+        historyList.innerHTML = '<p style="opacity:0.7; font-size:0.9rem;">No recent downloads yet</p>';
+        return;
+      }
+      
+      historyList.innerHTML = history.map(item => `
+        <div class="history-item" onclick="useHistoryItem('${item.url}')">
+          <span>${item.url}</span>
+          <i class="fas fa-times" onclick="removeHistoryItem('${item.url}', event)"></i>
+        </div>
+      `).join('');
+    }
+
+    function useHistoryItem(url) {
+      document.getElementById('urlInput').value = url;
+      downloadVideo();
+    }
+
+    function removeHistoryItem(url, event) {
+      event.stopPropagation();
+      history = history.filter(item => item.url !== url);
+      localStorage.setItem('downloadHistory', JSON.stringify(history));
+      renderHistory();
+    }
+
+    // ===== UTILITY FUNCTIONS =====
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          showTerminalNotification('success', 'Link copied to clipboard!');
+        })
+        .catch(err => {
+          showTerminalNotification('error', 'Failed to copy link');
+          console.error('Failed to copy: ', err);
+        });
+    }
+
+    function showTerminalNotification(type, message) {
+      const notification = document.createElement('div');
+      notification.className = `terminal-notification ${type}`;
+      
+      let icon;
+      switch(type) {
+        case 'success':
+          icon = '<i class="fas fa-check-circle"></i>';
+          break;
+        case 'error':
+          icon = '<i class="fas fa-exclamation-circle"></i>';
+          break;
+        case 'warning':
+          icon = '<i class="fas fa-exclamation-triangle"></i>';
+          break;
+        default:
+          icon = '<i class="fas fa-info-circle"></i>';
+      }
+      
+      notification.innerHTML = `${icon} <span>${message}</span>`;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.style.animation = 'fadeInUp 0.5s ease reverse';
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 500);
+      }, 3000);
+    }
+  </script> 
+ </body>
+</html>
